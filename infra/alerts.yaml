@@ -1,0 +1,22 @@
+groups:
+  - name: warband
+    rules:
+      - alert: EventLagHigh
+        expr: histogram_quantile(0.99, sum(rate(warband_event_lag_seconds_bucket[2m])) by (le)) > 5 or max(warband_oldest_event_seconds) > 5
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "World event lag exceeds five seconds", runbook: "docs/runbooks/stuck-event.md" }
+      - alert: LockRetriesExhausted
+        expr: increase(warband_lock_retry_exhaustions_total[2m]) > 0
+        labels: { severity: critical }
+        annotations: { summary: "Database lock retries exhausted", runbook: "docs/runbooks/locks.md" }
+      - alert: OutboxBacklog
+        expr: max(warband_outbox_backlog) > 10000
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: "Committed notification backlog exceeds 10,000" }
+      - alert: ApiErrors
+        expr: sum(rate(warband_http_request_seconds_count{status=~"5.."}[5m])) / clamp_min(sum(rate(warband_http_request_seconds_count[5m])), 1) > 0.01
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "API error rate exceeds one percent" }

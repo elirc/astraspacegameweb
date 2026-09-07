@@ -1,0 +1,169 @@
+.fortress-map .map-board {
+  border-color: #46504a;
+  border-radius: 5px;
+  background: #1c2927;
+  box-shadow: 0 14px 35px #0b13112e;
+}
+
+.fortress-map .pixi-map:focus-visible {
+  outline: 2px solid #dfb571;
+  outline-offset: -3px;
+}
+
+.fortress-map .map-atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(ellipse at 48% 40%, transparent 35%, #07101052 100%);
+  box-shadow: inset 0 0 55px #040a0b38;
+}
+
+.fortress-map .map-coordinate,
+.fortress-map .map-tools,
+.fortress-map .map-legend {
+  z-index: 2;
+  border-color: #697261;
+  background: #121c1bf2;
+  color: #ded9c5;
+  box-shadow: 0 3px 12px #0004;
+}
+
+.fortress-map .map-coordinate span {
+  color: #bbaa83;
+}
+
+.fortress-map .map-realm {
+  position: absolute;
+  z-index: 2;
+  top: 77px;
+  left: 22px;
+  pointer-events: none;
+  color: #dfcfaa;
+  font:
+    21px Georgia,
+    serif;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 5px #060d0c;
+}
+
+.fortress-map .map-realm span {
+  display: block;
+  margin-top: 7px;
+  font: 9px var(--font-body, Arial, sans-serif);
+  letter-spacing: 2.2px;
+  color: #aeb9aa;
+}
+
+.fortress-map .map-tools button {
+  background: #172320;
+  border-color: #485449;
+  color: #e1d8bb;
+}
+
+.fortress-map .map-tools button:hover,
+.fortress-map .map-tools button:focus-visible {
+  background: #354039;
+  color: #ffda94;
+}
+
+.fortress-map .map-legend {
+  border: 1px solid #53604e;
+  font-size: 10px;
+}
+
+.fortress-map .map-legend .gold {
+  background: #d8a762;
+}
+
+.fortress-map .map-legend .crimson {
+  background: #cf6558;
+}
+
+.fortress-map .map-legend .gray {
+  background: #a0ada0;
+}
+
+.fortress-map .nearby {
+  border-color: #46504a;
+  background: #18221f;
+  color: #d9dbc9;
+}
+
+.fortress-map .nearby .panel-heading {
+  border-color: #39483d;
+}
+
+.fortress-map .nearby .panel-heading h3 {
+  color: #e6d7b6;
+  font-family: Georgia, serif;
+}
+
+.fortress-map .search-input {
+  border-color: #56614f;
+  background: #111b18;
+  color: #b5c0ac;
+}
+
+.fortress-map .search-input input {
+  color: #f0e7cf;
+}
+
+.fortress-map .search-input input::placeholder {
+  color: #b2bbaa;
+}
+
+.fortress-map .village-list button {
+  border-color: #334236;
+}
+
+.fortress-map .village-list button:hover,
+.fortress-map .village-list button.selected {
+  background: #304033;
+  box-shadow: inset 3px 0 #c79c56;
+}
+
+.fortress-map .village-list b {
+  color: #e7e4d3;
+}
+
+.fortress-map .village-list small,
+.fortress-map .distance,
+.fortress-map .empty {
+  color: #b9c4b0;
+}
+
+.fortress-map .map-dot {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  color: #a0ada0;
+}
+
+.fortress-map .map-dot.own {
+  color: #e0ae67;
+}
+
+.fortress-map .map-dot.enemy {
+  color: #d87566;
+}
+
+@media (max-width: 600px) {
+  .fortress-map .map-realm {
+    top: 66px;
+    left: 15px;
+    font-size: 16px;
+    letter-spacing: 1.4px;
+  }
+
+  .fortress-map .map-realm span {
+    font-size: 8px;
+    letter-spacing: 1.4px;
+  }
+
+  .fortress-map .map-legend {
+    gap: 12px;
+    font-size: 8px;
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@warband/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build --config ../../vite.config.ts"
+  },
+  "dependencies": {
+    "@warband/shared": "1.0.0"
+  }
+}

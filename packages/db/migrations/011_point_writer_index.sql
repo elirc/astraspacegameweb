@@ -1,0 +1,2 @@
+-- Bounds dependency discovery by pending points/ownership writers, not every arrival.
+CREATE INDEX events_pending_point_writer ON scheduled_events(world_id,due_at) WHERE status='pending' AND (kind NOT IN ('recruit','market','merchantReturn','release','return','withdraw','movement') OR (kind='movement' AND coalesce(payload->>'kind','attack') NOT IN ('support','scout') AND (coalesce((payload->'units'->>'ram')::numeric,0)>0 OR coalesce((payload->'units'->>'catapult')::numeric,0)>0 OR coalesce((payload->'units'->>'noble')::numeric,0)>0)));

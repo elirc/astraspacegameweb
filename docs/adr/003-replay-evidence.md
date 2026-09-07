@@ -1,0 +1,11 @@
+﻿# Replay and journal evidence
+
+The application adapter prepares points, ownership and return candidates before invoking a pure event handler. Handlers mutate their supplied aggregate and emit event, report, notification and cancellation effects; the adapter commits those effects in the village transaction. Replay invokes the same adapter with recorded reads and allocated event ids, then compares state, ownership, consumed read trace and emitted effects.
+
+New journal entries store a SHA-256 digest of canonical emitted effects, avoiding duplicate report payloads and unused per-owner village rows. The full reports and scheduled events remain durable records. Object keys are canonicalized and dates normalized before hashing. Older entries containing full effect payloads remain replayable.
+
+Commands and moderation/config changes passing through `saveVillage` atomically record a checkpoint with the last resolved event id. The range replayer starts from the first selected event's recorded pre-state, applies ordered events and explicit intervening checkpoints, and checks continuity before every event. It reports missing or unresolved events and refuses a successful result when continuity or an effect differs. It does not silently bridge a gap in historical recording.
+
+`pnpm replay --village 123 --from 2026-09-01T00:00:00Z --to 2026-09-02T00:00:00Z` exports a repeatable-read, read-only snapshot from the source database. It creates a uniquely named scratch database, persists replay results there, writes an artifact, then drops only that database. `REPLAY_ADMIN_DATABASE_URL` may supply a separate role with database creation privileges; the source role only needs read access. The admin UI offers the same range workflow using transaction-local temporary tables, without requiring database creation privileges.
+
+Ranges are inclusive at `from`, exclusive at `to`, and capped at 50,000 events per request. Split larger investigations into adjacent ranges. The artifact identifies the initial event snapshot, applied mutation checkpoints, individual diffs, missing history and the state after the last replayed event. Commands are explicit external inputs to an event replay, not claims of having re-executed every historical player command.

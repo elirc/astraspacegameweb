@@ -1,0 +1,10 @@
+{
+  "name": "@warband/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@warband/shared": "1.0.0",
+    "@warband/db": "1.0.0"
+  }
+}

@@ -1,0 +1,16 @@
+{$PUBLIC_HOST} {
+	encode zstd gzip
+	@internal path /metrics
+	respond @internal 404
+	reverse_proxy api:3001 {
+		lb_policy round_robin
+		health_uri /api/health
+		health_interval 10s
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+}

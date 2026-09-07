@@ -1,0 +1,88 @@
+name: Verify game
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: warband
+          POSTGRES_PASSWORD: warband_local
+          POSTGRES_DB: warband
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U warband"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["56379:6379"]
+      mailpit:
+        image: axllent/mailpit:v1.27
+        ports: ["51025:1025", "58025:8025"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm config:validate
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm test:containers
+      - run: pnpm test:redis-outage
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - run: pnpm dev > /tmp/warband.log 2>&1 &
+      - run: node tools/wait-ready.mjs
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification
+          path: |
+            artifacts/
+            playwright-report/
+            test-results/
+  chaos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: docker compose -f infra/chaos/compose.yaml up -d --wait postgres redis
+      - run: pnpm test:chaos
+      - run: pnpm test:recovery
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chaos-verification
+          path: artifacts/chaos/
+  sustained-load:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+      - run: docker compose -f infra/chaos/compose.yaml up -d --wait postgres redis
+      - run: pnpm test:load
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sustained-load
+          path: artifacts/load/

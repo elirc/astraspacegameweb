@@ -1,0 +1,5 @@
+const sql=`SELECT 'event' AS source,e.village_id,coalesce(-v.player_id,v.id) AS target,coalesce(-o.player_id,o.id) AS origin,-(e.payload->>'owner')::bigint AS sender
+ FROM scheduled_events e JOIN LATERAL (SELECT id,player_id FROM villages WHERE id=e.village_id OFFSET 0) v ON true LEFT JOIN LATERAL (SELECT id,player_id FROM villages WHERE id=(e.payload->>'origin')::bigint OFFSET 0) o ON true
+ WHERE e.world_id=1 AND e.status='pending' AND e.due_at<=$2
+ UNION ALL SELECT 'support',s.station_id,coalesce(-v.player_id,v.id),coalesce(-h.player_id,h.id),-s.player_id FROM support_links s JOIN villages v ON v.id=s.station_id JOIN villages h ON h.id=s.home_id
+ UNION ALL SELECT 'initial',id,coalesce(-player_id,id),NULL,NULL FROM villages WHERE id=ANY($1::bigint[])`;

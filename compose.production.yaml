@@ -1,0 +1,103 @@
+name: warband-production
+x-app: &app
+  build: .
+  restart: unless-stopped
+  init: true
+  stop_grace_period: 60s
+  environment: &env
+    NODE_ENV: production
+    TRUST_PROXY: '1'
+    DATABASE_URL: ${DATABASE_URL:?Set the private PostgreSQL connection URL}
+    REDIS_URL: ${REDIS_URL:?Set the private Redis connection URL}
+    JWT_SECRET: ${JWT_SECRET:?Set a random JWT secret}
+    PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the HTTPS public origin}
+    OPERATOR_NAME: ${OPERATOR_NAME:?Set the service operator}
+    SUPPORT_EMAIL: ${SUPPORT_EMAIL:?Set the support email}
+    METRICS_TOKEN: ${METRICS_TOKEN:?Set a metrics bearer token}
+    VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:?Generate VAPID keys}
+    VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:?Generate VAPID keys}
+    VAPID_SUBJECT: ${VAPID_SUBJECT:?Set a VAPID contact URI}
+    SMTP_URL: ${SMTP_URL:?Set the SMTP connection URL}
+    MAIL_FROM: ${MAIL_FROM:?Set the verified sender address}
+    WORLD_SPEED: 1
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+    PORT: 3001
+  healthcheck:
+    test:
+      [
+        'CMD',
+        'node',
+        '-e',
+        "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+      ]
+    interval: 15s
+    timeout: 5s
+    retries: 4
+services:
+  api:
+    <<: *app
+    environment:
+      <<: *env
+      ROLE: api
+    deploy:
+      replicas: 2
+  resolver:
+    <<: *app
+    environment:
+      <<: *env
+      ROLE: resolver
+    deploy:
+      replicas: 3
+  relay:
+    <<: *app
+    environment:
+      <<: *env
+      ROLE: relay
+  sidejobs:
+    <<: *app
+    environment:
+      <<: *env
+      ROLE: sidejobs
+  edge:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ['80:80', '443:443']
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Set the public hostname}
+    volumes: ['./infra/Caddyfile:/etc/caddy/Caddyfile:ro', 'caddy_data:/data']
+    depends_on:
+      api:
+        condition: service_healthy
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    volumes:
+      [
+        './infra/prometheus.yaml:/etc/prometheus/prometheus.yml:ro',
+        './infra/alerts.yaml:/etc/prometheus/alerts.yaml:ro',
+        './infra/runtime/metrics_token:/run/secrets/metrics_token:ro',
+        'prometheus_data:/prometheus',
+      ]
+  grafana:
+    image: grafana/grafana:12.1.1
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set a Grafana password}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports: ['127.0.0.1:3300:3000']
+    volumes:
+      [
+        './infra/grafana/provisioning:/etc/grafana/provisioning:ro',
+        './infra/grafana/dashboards:/var/lib/grafana/dashboards:ro',
+        'grafana_data:/var/lib/grafana',
+      ]
+  tempo:
+    image: grafana/tempo:2.8.2
+    restart: unless-stopped
+    command: ['-config.file=/etc/tempo.yaml']
+    volumes: ['./infra/tempo.yaml:/etc/tempo.yaml:ro', 'tempo_data:/var/tempo']
+volumes:
+  caddy_data:
+  prometheus_data:
+  grafana_data:
+  tempo_data:

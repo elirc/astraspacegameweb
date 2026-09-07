@@ -1,0 +1,31 @@
+name: warband-drills
+services:
+  postgres:
+    build: ../postgres
+    environment:
+      POSTGRES_USER: warband
+      POSTGRES_PASSWORD: drill_only
+      POSTGRES_DB: warband_drill_test
+    ports: ["127.0.0.1:55433:5432"]
+    command: ["postgres", "-c", "wal_level=replica", "-c", "archive_mode=on", "-c", "archive_command=pgbackrest --stanza=warband archive-push %p", "-c", "archive_timeout=60"]
+    volumes: ["drill_pg:/var/lib/postgresql/data", "drill_backup:/var/lib/pgbackrest"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U warband -d warband_drill_test"]
+      interval: 2s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:56380:6379"]
+  restore:
+    build: ../postgres
+    profiles: [restore]
+    environment:
+      POSTGRES_USER: warband
+      POSTGRES_PASSWORD: drill_only
+      POSTGRES_DB: warband_drill_test
+    ports: ["127.0.0.1:55434:5432"]
+    volumes: ["drill_restore:/var/lib/postgresql/data", "drill_backup:/var/lib/pgbackrest"]
+volumes:
+  drill_pg:
+  drill_backup:
+  drill_restore:

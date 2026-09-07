@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.env
+artifacts
+test-results
+playwright-report
+*.log
+infra/runtime
+backups
+.turbo
+
+test-results*

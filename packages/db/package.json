@@ -1,0 +1,10 @@
+{
+  "name": "@warband/db",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./index.ts",
+  "dependencies": {
+    "@warband/shared": "1.0.0"
+  }
+}
