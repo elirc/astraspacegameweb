@@ -1,16 +1,147 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page, type Request, type Response } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
+type EntryRequest = {
+  id: number;
+  path: string;
+  method: string;
+  startedMs: number;
+  headersMs?: number;
+  status?: number;
+  bodyCompleteMs?: number;
+  failedMs?: number;
+  failure?: string;
+  summary?: {
+    playerId?: number;
+    statePlayerId?: number;
+    villageCount?: number;
+    villageNames?: string[];
+  };
+  bodySummaryUnavailable?: boolean;
+};
+type MapDiagnostics = {
+  startedAt: string;
+  stages: { name: string; elapsedMs: number }[];
+  pageErrors: string[];
+  entryRequests: EntryRequest[];
+  entryRequestsTruncated?: boolean;
+};
+const diagnostics = new WeakMap<Page, MapDiagnostics>();
+const entryRequestStops = new WeakMap<Page, () => Promise<void>>();
+
+function observeEntryRequests(page: Page, run: MapDiagnostics, started: number) {
+  const records = new WeakMap<Request, EntryRequest>();
+  const responses = new WeakMap<Request, Response>();
+  const summaries: Promise<void>[] = [];
+  const elapsed = () => Date.now() - started;
+  const onRequest = (request: Request) => {
+    const path = new URL(request.url()).pathname;
+    if (!['/api/auth/guest', '/api/auth/refresh', '/api/state'].includes(path)) return;
+    if (run.entryRequests.length >= 64) {
+      run.entryRequestsTruncated = true;
+      return;
+    }
+    const record = {
+      id: run.entryRequests.length + 1,
+      path,
+      method: request.method(),
+      startedMs: elapsed(),
+    };
+    run.entryRequests.push(record);
+    records.set(request, record);
+  };
+  const onResponse = (response: Response) => {
+    const record = records.get(response.request());
+    if (!record) return;
+    record.headersMs = elapsed();
+    record.status = response.status();
+    responses.set(response.request(), response);
+  };
+  const onFinished = (request: Request) => {
+    const record = records.get(request);
+    if (!record) return;
+    record.bodyCompleteMs = elapsed();
+    const response = responses.get(request);
+    if (!response?.ok()) return;
+    // Read only bodies that have already finished; stopping diagnostics never waits on
+    // an unfinished transport. Retain only the fields needed to identify this world.
+    summaries.push(
+      (async () => {
+        try {
+          const data = await response.json();
+          const summary: NonNullable<EntryRequest['summary']> = {};
+          if (typeof data?.playerId === 'number' && Number.isFinite(data.playerId))
+            summary.playerId = data.playerId;
+          if (typeof data?.player?.id === 'number' && Number.isFinite(data.player.id))
+            summary.statePlayerId = data.player.id;
+          if (Array.isArray(data?.villages)) {
+            summary.villageCount = data.villages.length;
+            summary.villageNames = data.villages
+              .slice(0, 3)
+              .map((village: { name?: unknown } | null) => village?.name)
+              .filter((name: unknown): name is string => typeof name === 'string')
+              .map((name: string) => name.slice(0, 80));
+          }
+          record.summary = summary;
+        } catch {
+          record.bodySummaryUnavailable = true;
+        }
+      })(),
+    );
+  };
+  const onFailed = (request: Request) => {
+    const record = records.get(request);
+    if (!record) return;
+    record.failedMs = elapsed();
+    record.failure = (request.failure()?.errorText || 'Request failed').slice(0, 160);
+  };
+  page.on('request', onRequest);
+  page.on('response', onResponse);
+  page.on('requestfinished', onFinished);
+  page.on('requestfailed', onFailed);
+  return async () => {
+    page.off('request', onRequest);
+    page.off('response', onResponse);
+    page.off('requestfinished', onFinished);
+    page.off('requestfailed', onFailed);
+    await Promise.all(summaries);
+  };
+}
+
 // Interception must reach the fixture rather than bypass it through the PWA worker.
-// Continuous trace screenshots distort animation-frame measurements.
-test.use({ serviceWorkers: 'block', trace: 'off' });
-test.afterEach(async ({ context }) => {
+// Continuous trace screenshots distort animation-frame measurements; tracing is opt-in.
+test.use({
+  serviceWorkers: 'block',
+  trace: process.env.TRACE_MAP === '1' ? 'retain-on-failure' : 'off',
+});
+test.afterEach(async ({ context, page }, info) => {
+  await entryRequestStops.get(page)?.();
+  const run = diagnostics.get(page);
+  if (run) {
+    const path = info.outputPath('map-diagnostics.json');
+    await writeFile(path, JSON.stringify(run, null, 2));
+    await info.attach('map-diagnostics', { path, contentType: 'application/json' });
+  }
   await context.unrouteAll({ behavior: 'wait' });
 });
 
 test('map streams 50,000 public villages, renders, pans and survives Canvas fallback', async ({
   page,
 }, info) => {
+  const started = Date.now();
+  const run: MapDiagnostics = {
+    startedAt: new Date(started).toISOString(),
+    stages: [],
+    pageErrors: [],
+    entryRequests: [],
+  };
+  diagnostics.set(page, run);
+  const stopEntryRequests = observeEntryRequests(page, run, started);
+  entryRequestStops.set(page, stopEntryRequests);
+  // Entry request diagnostics stop before map navigation. Frame sampling adds only
+  // phase boundaries; failed runs retain the last reached phase for diagnosis.
+  const stage = (name: string) => run.stages.push({ name, elapsedMs: Date.now() - started });
+  stage('fixture setup');
   const villages = Array.from({ length: 50000 }, (_, i) => ({
     id: 100000 + i,
     x: 375 + (i % 250),
@@ -43,9 +174,11 @@ test('map streams 50,000 public villages, renders, pans and survives Canvas fall
       },
     });
   });
-  const errors: string[] = [];
+  const errors = run.pageErrors;
   page.on('pageerror', (error) => errors.push(error.message));
+  stage('landing navigation');
   await page.goto('/');
+  stage('guest entry');
   const [joined] = await Promise.all([
     page.waitForResponse(
       (r) => r.url().endsWith('/api/auth/guest') && r.request().method() === 'POST',
@@ -53,7 +186,10 @@ test('map streams 50,000 public villages, renders, pans and survives Canvas fall
     page.getByRole('button', { name: 'Enter the Crownlands', exact: true }).click(),
   ]);
   expect(joined.status()).toBe(200);
+  stage('guest accepted');
   await expect(page.getByRole('heading', { name: 'Ravenswood', exact: true })).toBeVisible();
+  stage('village visible');
+  await stopEntryRequests();
   const state = await (await page.request.get('/api/state')).json();
   const own = state.villages[0];
   const anchor = { x: Math.round(own.x / 100) * 100, y: Math.round(own.y / 100) * 100 };
@@ -68,10 +204,13 @@ test('map streams 50,000 public villages, renders, pans and survives Canvas fall
   }
   const menu = page.getByRole('button', { name: 'Open navigation', exact: true });
   if (await menu.isVisible()) await menu.click();
+  stage('map navigation');
   await page.getByRole('button', { name: 'World map', exact: true }).click();
   await expect(page.getByLabel('Interactive world map', { exact: true })).toBeVisible();
+  stage('map mounted');
   await expect(page.locator('.pixi-map canvas')).toBeVisible();
   await expect(page.locator('.map-coordinate')).not.toContainText('loading');
+  stage('renderer ready');
   // Use the real camera controls. Align near a tile boundary so every browser's
   // viewport prefetches the entire fixture, without intercepting authenticated state.
   await page.locator('.pixi-map').evaluate(
@@ -93,6 +232,7 @@ test('map streams 50,000 public villages, renders, pans and survives Canvas fall
     { own: { x: own.x, y: own.y }, anchor },
   );
   await expect.poll(() => servedVillages.size).toBe(50000);
+  stage('50000 villages served');
   const profiler =
     process.env.PROFILE_MAP === '1' && info.project.name === 'desktop-chromium'
       ? await page.context().newCDPSession(page)
@@ -101,6 +241,7 @@ test('map streams 50,000 public villages, renders, pans and survives Canvas fall
   await profiler?.send('Profiler.start');
   const warmupFrames = process.env.CERTIFY_MAP_FPS === '1' ? 120 : 60;
   const measuredFrames = process.env.CERTIFY_MAP_FPS === '1' ? 600 : 300;
+  stage('frame sampling');
   const frames = await page.locator('.pixi-map').evaluate(
     async (element, { warmupFrames, measuredFrames }) => {
       const deltas: number[] = [];
@@ -119,6 +260,7 @@ test('map streams 50,000 public villages, renders, pans and survives Canvas fall
     },
     { warmupFrames, measuredFrames },
   );
+  stage('frames measured');
   if (profiler) {
     const result = await profiler.send('Profiler.stop');
     await writeFile('artifacts/map-cpu-profile.json', JSON.stringify(result));
@@ -136,6 +278,7 @@ test('map streams 50,000 public villages, renders, pans and survives Canvas fall
     gpu,
     run: info.repeatEachIndex,
     profiled: !!profiler,
+    traced: process.env.TRACE_MAP === '1',
     villages: 50000,
     warmupFrames,
     measuredFrames: frames.length,
@@ -158,6 +301,8 @@ test('map streams 50,000 public villages, renders, pans and survives Canvas fall
     `artifacts/${info.project.name}-map-performance-${info.repeatEachIndex}.json`,
     JSON.stringify(measurement, null, 2),
   );
+  const measurementPath = info.outputPath('map-performance.json');
+  await writeFile(measurementPath, JSON.stringify(measurement, null, 2));
   await info.attach('map-performance.json', {
     body: JSON.stringify(measurement, null, 2),
     contentType: 'application/json',
@@ -176,6 +321,7 @@ test('map streams 50,000 public villages, renders, pans and survives Canvas fall
   const fallback = await page.context().newPage();
   fallback.on('pageerror', (error) => errors.push(error.message));
   try {
+    stage('explicit Canvas navigation');
     await fallback.goto('/?renderer=canvas&page=map');
     await expect(fallback.getByLabel('Interactive world map', { exact: true })).toBeVisible();
     await expect(fallback.locator('.map-coordinate')).toContainText('Canvas');
@@ -185,6 +331,7 @@ test('map streams 50,000 public villages, renders, pans and survives Canvas fall
       true,
     );
     expect(errors).toEqual([]);
+    stage('Canvas fallback verified');
   } finally {
     await fallback.close();
   }

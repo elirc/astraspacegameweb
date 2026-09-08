@@ -12,7 +12,7 @@ export function Admin({ act, pending }: { act: any; pending: boolean }) {
     [auditActor, setAuditActor] = useState(''),
     [auditAction, setAuditAction] = useState('');
   const [tab, setTab] = useState('config'),
-    [source, setSource] = useState(''),
+    [source, setSource] = useState<string | null>(null),
     [reason, setReason] = useState(''),
     [preview, setPreview] = useState<any>(null),
     [search, setSearch] = useState(''),
@@ -45,9 +45,12 @@ export function Admin({ act, pending }: { act: any; pending: boolean }) {
     queryFn: () => api('/admin/abuse'),
     enabled: tab === 'abuse',
   });
+  const configReady = Boolean(cfg.data?.config);
   const text =
-    source ||
-    JSON.stringify({ ...cfg.data?.config, version: (cfg.data?.config.version || 0) + 1 }, null, 2);
+    source ??
+    (configReady
+      ? JSON.stringify({ ...cfg.data.config, version: cfg.data.config.version + 1 }, null, 2)
+      : '');
   return (
     <section className="panel admin-panel">
       <div className="panel-heading">
@@ -83,6 +86,24 @@ export function Admin({ act, pending }: { act: any; pending: boolean }) {
             Queued events keep their original rules. Resource rates change at the version boundary.
             Validate before applying.
           </p>
+          {cfg.isError ? (
+            <div className="query-feedback" role="alert">
+              <p>
+                {configReady
+                  ? 'Could not refresh world configuration. Try again.'
+                  : 'Could not load world configuration. Try again.'}
+              </p>
+              <button
+                className="button outline"
+                disabled={cfg.isFetching}
+                onClick={() => void cfg.refetch()}
+              >
+                {cfg.isFetching ? 'Retrying…' : 'Try again'}
+              </button>
+            </div>
+          ) : !configReady ? (
+            <p role="status">Loading world configuration…</p>
+          ) : null}
           <label>
             World configuration JSON
             <textarea
@@ -90,6 +111,7 @@ export function Admin({ act, pending }: { act: any; pending: boolean }) {
               className="config-editor"
               rows={20}
               value={text}
+              disabled={!configReady}
               onChange={(e) => {
                 setSource(e.target.value);
                 setPreview(null);
@@ -99,7 +121,7 @@ export function Admin({ act, pending }: { act: any; pending: boolean }) {
           <div className="admin-actions flex flex-wrap gap-2">
             <button
               className="button outline"
-              disabled={pending || reason.length < 10}
+              disabled={!configReady || pending || reason.length < 10}
               onClick={() =>
                 act(async () => {
                   const p = await api('/admin/config', {
@@ -115,11 +137,11 @@ export function Admin({ act, pending }: { act: any; pending: boolean }) {
             </button>
             <button
               className="button primary"
-              disabled={pending || !preview?.valid || reason.length < 10}
+              disabled={!configReady || pending || !preview?.valid || reason.length < 10}
               onClick={() =>
                 act(async () => {
                   await api('/admin/config', { config: JSON.parse(text), dryRun: false, reason });
-                  setSource('');
+                  setSource(null);
                   setPreview(null);
                 }, 'World configuration applied')
               }

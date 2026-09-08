@@ -30,6 +30,9 @@ test('developer creates NPC residents, observes automatic building, edits pace a
     await page.getByRole('combobox', { name: 'Play style', exact: true }).selectOption('builder');
     await page.getByLabel('Minimum action interval (seconds)', { exact: true }).fill('5');
     await page.getByLabel('Maximum action interval (seconds)', { exact: true }).fill('5');
+    // A creation request can commit after its client deadline. Keep those actors
+    // paused until this test has acknowledged and identified its own accounts.
+    await page.getByLabel('Enable autonomous play', { exact: true }).uncheck();
     await page.getByRole('button', { name: 'Create NPC accounts', exact: true }).click();
     await expect(
       page.getByRole('status').filter({ hasText: 'Created 2 NPC accounts:' }),
@@ -45,6 +48,9 @@ test('developer creates NPC residents, observes automatic building, edits pace a
     const card = page
       .locator('.npc-card')
       .filter({ has: page.getByRole('heading', { name: records[0].name, exact: true }) });
+    await expect(card.locator('.npc-status')).toHaveText('Paused');
+    await card.getByRole('button', { name: 'Resume NPC', exact: true }).click();
+    await expect(card.locator('.npc-status')).toHaveText('Playing');
     await expect
       .poll(
         async () =>

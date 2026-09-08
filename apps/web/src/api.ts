@@ -88,8 +88,8 @@ export async function api(path: string, body?: unknown, method?: string): Promis
   }
   return data;
 }
-export const format = (n: number = 0) =>
-  new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n);
+const numberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+export const format = (n: number = 0) => numberFormatter.format(n);
 export function duration(ms: number) {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return s >= 3600

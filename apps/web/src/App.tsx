@@ -8,7 +8,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import {
   ArrowDownLeft,
   ArrowRight,
@@ -84,6 +84,7 @@ import { Admin } from './Admin';
 import { PushSettings } from './AccountExtras';
 import { InboxTools } from './InboxTools';
 import { TribeMembers } from './TribeMembers';
+import { createQueryRefresher, resetAccountQueries } from './queryRefresh';
 const VillageScene = memo(VillageSceneContent);
 const WorldMap = memo(WorldMapContent);
 const buildingIcons: Record<string, LucideIcon> = {
@@ -221,7 +222,7 @@ function QueryFeedback({ query, label }: { query: any; label: string }) {
   );
 }
 
-function AppContent() {
+function AppContent({ state }: { state: UseQueryResult<any, Error> }) {
   const { buildings, units, buildingCost, capacity, farmCapacity, population, production, battle } =
     useGameRules();
   const qc = useQueryClient();
@@ -251,13 +252,17 @@ function AppContent() {
   const menuRef = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(Date.now());
   const [connected, setConnected] = useState(false);
-  const state = useQuery({
-    queryKey: ['state'],
-    queryFn: () => api('/state'),
-    retry: false,
-    refetchInterval: 10000,
-  });
   const data = state.data;
+  const stateUnavailable = state.isError && (state.error as any).status !== 401;
+  const refreshRef = useRef<ReturnType<typeof createQueryRefresher> | null>(null);
+  useEffect(() => {
+    const refresher = createQueryRefresher(qc);
+    refreshRef.current = refresher;
+    return () => {
+      refreshRef.current?.dispose();
+      refreshRef.current = null;
+    };
+  }, [qc, data?.player.id]);
   const village = data?.villages.find((v: any) => v.id === selectedId) || data?.villages[0];
   const hasVillage = Boolean(village);
   useEffect(() => {
@@ -332,17 +337,21 @@ function AppContent() {
         `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/ws`,
       );
       socket.onopen = () => {
+        if (stopped) return;
         setConnected(true);
         attempt = 0;
-        qc.invalidateQueries();
+        refreshRef.current?.request();
       };
       socket.onmessage = (e) => {
+        if (stopped) return;
         try {
           const hint = JSON.parse(e.data);
-          if (hint.type !== 'server_time') qc.invalidateQueries();
+          if (hint.type !== 'server_time' && hint.type !== 'connected')
+            refreshRef.current?.request();
         } catch {}
       };
       socket.onclose = () => {
+        if (stopped) return;
         setConnected(false);
         if (!stopped)
           timer = setTimeout(
@@ -367,13 +376,22 @@ function AppContent() {
   const flash = (text: string, error = false) => setToast({ text, error });
   async function act(fn: () => Promise<any>, message: string) {
     if (pending) return false;
+    const refresher = refreshRef.current;
     setPending(true);
     try {
       const result = await fn();
       // A committed command should not wait for unrelated map/inbox refreshes.
       // Authentication waits only for the new player's initial state.
-      if (result?.playerId) await qc.invalidateQueries({ queryKey: ['state'] });
-      void qc.invalidateQueries();
+      if (result?.playerId) {
+        refresher?.dispose();
+        try {
+          await resetAccountQueries(qc);
+        } finally {
+          // Same-player registration may finish without remounting this component.
+          if (refresher && refreshRef.current === refresher)
+            refreshRef.current = createQueryRefresher(qc);
+        }
+      } else refresher?.request();
       flash(message);
       return true;
     } catch (e: any) {
@@ -419,7 +437,7 @@ function AppContent() {
             <div className="landing-actions">
               <button
                 className="button primary large"
-                disabled={pending || state.isPending}
+                disabled={pending || state.isPending || stateUnavailable}
                 onClick={() => act(() => api('/auth/guest', {}), 'Welcome to the Crownlands')}
               >
                 {state.isPending
@@ -444,10 +462,17 @@ function AppContent() {
                 <Users size={16} /> Better together
               </span>
             </div>
-            {state.error && (state.error as any).status !== 401 && (
-              <p className="inline-error">
-                Cannot reach the world server. Make sure the API and database are running.
-              </p>
+            {stateUnavailable && (
+              <div className="query-feedback" role="alert">
+                <p>Could not load your world. Try again.</p>
+                <button
+                  className="button"
+                  disabled={state.isFetching}
+                  onClick={() => void state.refetch()}
+                >
+                  {state.isFetching ? 'Retrying…' : 'Try again'}
+                </button>
+              </div>
             )}
           </div>
           <div className="landing-art">
@@ -2582,7 +2607,7 @@ export default function App() {
   });
   return (
     <RulesContext.Provider value={state.data?.config || defaultConfig}>
-      <AppContent />
+      <AppContent key={state.data?.player.id ?? 'anonymous'} state={state} />
     </RulesContext.Provider>
   );
 }

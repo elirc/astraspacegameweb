@@ -50,7 +50,7 @@ test('built application supports account login and an offline PWA shell', async 
     ]);
     await expect(page).toHaveTitle('Warband — A world worth conquering');
     await expect(
-      page.getByText('Cannot reach the world server. Make sure the API and database are running.', {
+      page.getByText('Could not load your world. Try again.', {
         exact: true,
       }),
     ).toBeVisible();

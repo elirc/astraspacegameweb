@@ -14,6 +14,7 @@ import { Castle, Crosshair, Minus, Plus, Search } from 'lucide-react';
 import { api } from './api';
 import { useUI } from './ui';
 import { CASTLE_FRAME, CASTLE_SIZE, castleFrame, createMapArt } from './mapArt';
+import { prepareMapCanvasFrame } from './mapCanvas';
 import './map.css';
 
 export function WorldMap({
@@ -169,6 +170,8 @@ export function WorldMap({
       candidate: Application | undefined,
       app: Application | undefined,
       canvas: HTMLCanvasElement | undefined,
+      canvasContext: CanvasRenderingContext2D | null = null,
+      terrainPattern: CanvasPattern | null = null,
       atlas: Texture | undefined,
       terrainTexture: Texture | undefined,
       terrain: TilingSprite | undefined,
@@ -197,28 +200,22 @@ export function WorldMap({
       return visible;
     };
     const drawCanvas = () => {
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!canvas || !canvasContext) return;
+      const ctx = canvasContext;
       const ratio = Math.min(devicePixelRatio, 2),
         w = target.clientWidth,
         h = target.clientHeight,
         c = live.current,
         s = pixels();
-      canvas.width = w * ratio;
-      canvas.height = h * ratio;
-      ctx.scale(ratio, ratio);
+      prepareMapCanvasFrame(canvas, ctx, w, h, ratio);
       ctx.fillStyle = '#1c2927';
       ctx.fillRect(0, 0, w, h);
-      if (artwork) {
-        const pattern = ctx.createPattern(artwork.terrain, 'repeat');
-        if (pattern) {
-          pattern.setTransform(
-            new DOMMatrix().translate(w / 2 - c.x * s, h / 2 - c.y * s).scale(c.zoom),
-          );
-          ctx.fillStyle = pattern;
-          ctx.fillRect(0, 0, w, h);
-        }
+      if (terrainPattern) {
+        terrainPattern.setTransform(
+          new DOMMatrix().translate(w / 2 - c.x * s, h / 2 - c.y * s).scale(c.zoom),
+        );
+        ctx.fillStyle = terrainPattern;
+        ctx.fillRect(0, 0, w, h);
       }
       for (const [v, color] of [
         [own, '#d5a661'],
@@ -351,6 +348,8 @@ export function WorldMap({
       app = undefined;
       artwork ||= createMapArt();
       canvas = document.createElement('canvas');
+      canvasContext = canvas.getContext('2d');
+      terrainPattern = canvasContext?.createPattern(artwork.terrain, 'repeat') || null;
       canvas.style.width = '100%';
       canvas.style.height = '100%';
       target.appendChild(canvas);
