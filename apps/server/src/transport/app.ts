@@ -115,9 +115,12 @@ export async function buildApp() {
   registerMap(app);
   app.get('/api/ws', { websocket: true }, (socket, req) => {
     const id = req.playerId;
-    let set = sockets.get(id);
-    if (!set) sockets.set(id, (set = new Set()));
-    set.add(socket);
+    // One live socket per player. Tabs that crash or sleep never send a close frame,
+    // so their sockets piled up in the set and every hint was fanned out to dead
+    // connections. The newest connection is the one the player is looking at.
+    for (const old of sockets.get(id) || []) old.close(4000, 'Replaced by a newer connection');
+    const set = new Set<WebSocket>([socket]);
+    sockets.set(id, set);
     socket.send(JSON.stringify({ type: 'connected', server_now: Date.now() }));
     let checking = false;
     const heartbeat = setInterval(async () => {
