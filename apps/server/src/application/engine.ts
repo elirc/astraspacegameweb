@@ -783,15 +783,16 @@ export async function resolveDue() {
   const batchSize = Number(process.env.RESOLVER_BATCH_SIZE || 300);
   if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 2000)
     throw new Error('RESOLVER_BATCH_SIZE must be between 1 and 2000');
-  const candidates = (
+  // Oldest-first: a random window lets newer events overtake the oldest overdue
+  // ones, which is exactly what inflates p99 lag. Always take the head of the queue
+  // (and read 8x fewer candidate rows per tick).
+  const selected = (
     await pool.query(
       "SELECT village_id,due_at FROM scheduled_events WHERE world_id=1 AND status='pending' AND due_at<=statement_timestamp() ORDER BY due_at,id LIMIT $1",
-      [batchSize * 8],
+      [batchSize],
     )
   ).rows;
-  if (!candidates.length) return 0;
-  const start = Math.floor(Math.random() * Math.max(1, candidates.length - batchSize + 1));
-  const selected = candidates.slice(start, start + batchSize);
+  if (!selected.length) return 0;
   const last = selected[selected.length - 1];
   try {
     return await transaction(async (tx) => {
