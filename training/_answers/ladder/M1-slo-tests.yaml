@@ -1,0 +1,50 @@
+rule_files: [M1-slo-rules.yaml]
+evaluation_interval: 30s
+tests:
+  - interval: 30s
+    input_series:
+      # 10 events/s, all later than 2 s (bucket le=2 stays flat, count grows)
+      - series: 'warband_event_lag_seconds_bucket{le="2.0",instance="r1"}'
+        values: '0+0x240'
+      - series: 'warband_event_lag_seconds_count{instance="r1"}'
+        values: '0+300x240'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: BattleTimelinessBudgetBurnFast
+        exp_alerts:
+          - exp_labels: { severity: page, slo: battle-timeliness }
+            exp_annotations: { summary: "Battles are burning the 28-day lag budget 14x too fast", runbook: "docs/runbooks/stuck-event.md" }
+  - interval: 30s
+    input_series:
+      # healthy: 99.9% within 2 s
+      - series: 'warband_event_lag_seconds_bucket{le="2.0",instance="r1"}'
+        values: '0+2997x240'
+      - series: 'warband_event_lag_seconds_count{instance="r1"}'
+        values: '0+3000x240'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: BattleTimelinessBudgetBurnFast
+        exp_alerts: []
+  - interval: 30s
+    input_series:
+      # resolver stopped: nothing commits, oldest event grows
+      - series: 'warband_events_resolved_total{instance="r1"}'
+        values: '100+0x20'
+      - series: 'warband_oldest_event_seconds{instance="api1"}'
+        values: '0+30x20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: WorldNotAdvancing
+        exp_alerts:
+          - exp_labels: { severity: page }
+  - interval: 30s
+    input_series:
+      # idle world: counters exist but do not move
+      - series: 'warband_event_lag_seconds_bucket{le="2.0",instance="r1"}'
+        values: '500+0x240'
+      - series: 'warband_event_lag_seconds_count{instance="r1"}'
+        values: '500+0x240'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: BattleTimelinessBudgetBurnFast
+        exp_alerts: []

@@ -1,0 +1,42 @@
+groups:
+  - name: warband-slo-recording
+    interval: 30s
+    rules:
+      # SLO 1: battle timeliness. Bad = committed later than 2 s after due_at.
+      - record: warband:event_lag_bad_ratio:rate5m
+        expr: 1 - (sum(rate(warband_event_lag_seconds_bucket{le=~"2|2.0"}[5m])) / sum(rate(warband_event_lag_seconds_count[5m])))
+      - record: warband:event_lag_bad_ratio:rate30m
+        expr: 1 - (sum(rate(warband_event_lag_seconds_bucket{le=~"2|2.0"}[30m])) / sum(rate(warband_event_lag_seconds_count[30m])))
+      - record: warband:event_lag_bad_ratio:rate1h
+        expr: 1 - (sum(rate(warband_event_lag_seconds_bucket{le=~"2|2.0"}[1h])) / sum(rate(warband_event_lag_seconds_count[1h])))
+      - record: warband:event_lag_bad_ratio:rate6h
+        expr: 1 - (sum(rate(warband_event_lag_seconds_bucket{le=~"2|2.0"}[6h])) / sum(rate(warband_event_lag_seconds_count[6h])))
+      # SLO 2: command success. Bad = 5xx OR slower than 500 ms. Probes and scrapes are not commands.
+      - record: warband:command_bad_ratio:rate5m
+        expr: 1 - (sum(rate(warband_http_request_seconds_bucket{route="/api/villages/:id/command",status!~"5..",le="0.5"}[5m])) / sum(rate(warband_http_request_seconds_count{route="/api/villages/:id/command"}[5m])))
+      - record: warband:command_bad_ratio:rate30m
+        expr: 1 - (sum(rate(warband_http_request_seconds_bucket{route="/api/villages/:id/command",status!~"5..",le="0.5"}[30m])) / sum(rate(warband_http_request_seconds_count{route="/api/villages/:id/command"}[30m])))
+      - record: warband:command_bad_ratio:rate1h
+        expr: 1 - (sum(rate(warband_http_request_seconds_bucket{route="/api/villages/:id/command",status!~"5..",le="0.5"}[1h])) / sum(rate(warband_http_request_seconds_count{route="/api/villages/:id/command"}[1h])))
+      - record: warband:command_bad_ratio:rate6h
+        expr: 1 - (sum(rate(warband_http_request_seconds_bucket{route="/api/villages/:id/command",status!~"5..",le="0.5"}[6h])) / sum(rate(warband_http_request_seconds_count{route="/api/villages/:id/command"}[6h])))
+  - name: warband-slo-alerts
+    rules:
+      - alert: BattleTimelinessBudgetBurnFast
+        expr: warband:event_lag_bad_ratio:rate1h > (14.4 * 0.01) and warband:event_lag_bad_ratio:rate5m > (14.4 * 0.01)
+        labels: { severity: page, slo: battle-timeliness }
+        annotations: { summary: "Battles are burning the 28-day lag budget 14x too fast", runbook: "docs/runbooks/stuck-event.md" }
+      - alert: BattleTimelinessBudgetBurnSlow
+        expr: warband:event_lag_bad_ratio:rate6h > (6 * 0.01) and warband:event_lag_bad_ratio:rate30m > (6 * 0.01)
+        labels: { severity: ticket, slo: battle-timeliness }
+      - alert: CommandSuccessBudgetBurnFast
+        expr: warband:command_bad_ratio:rate1h > (14.4 * 0.005) and warband:command_bad_ratio:rate5m > (14.4 * 0.005)
+        labels: { severity: page, slo: command-success }
+      - alert: CommandSuccessBudgetBurnSlow
+        expr: warband:command_bad_ratio:rate6h > (6 * 0.005) and warband:command_bad_ratio:rate30m > (6 * 0.005)
+        labels: { severity: ticket, slo: command-success }
+      # Guard: the lag SLI only counts COMMITTED events. A stopped resolver commits nothing and burns no budget.
+      - alert: WorldNotAdvancing
+        expr: max(warband_oldest_event_seconds) > 60 and (sum(rate(warband_events_resolved_total[2m])) == 0 or absent(warband_events_resolved_total))
+        for: 2m
+        labels: { severity: page }

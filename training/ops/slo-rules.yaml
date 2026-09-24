@@ -1,0 +1,6 @@
+# YOUR SLO + alert rules go here (ladder ticket M1). Prometheus loads this file
+# next to infra/alerts.yaml. Reload after editing:
+#   curl -X POST http://127.0.0.1:59090/-/reload
+# Validate before reloading:
+#   docker compose -f training/ops/compose.observe.yaml exec prometheus promtool check rules /etc/prometheus/slo-rules.yaml
+groups: []

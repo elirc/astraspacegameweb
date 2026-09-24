@@ -1,0 +1,47 @@
+# Training-only observability stack for a LOCAL Warband run.
+#
+# The real stack (compose.production.yaml) discovers targets with dns_sd on the
+# compose network (api/resolver/relay/sidejobs), so it cannot scrape processes you
+# start on the host with `tsx`. This file reuses the repo's own infra/ config
+# (alerts, Grafana provisioning + dashboard, Tempo config) and swaps only the
+# scrape config for one that points at host ports.
+#
+#   docker compose -f compose.yaml up -d postgres redis            # app storage
+#   docker compose -f training/ops/compose.observe.yaml up -d       # this file
+#   Prometheus  http://127.0.0.1:59090   (targets, alerts, PromQL)
+#   Grafana     http://127.0.0.1:53300   (admin / training; "Warband world health")
+#   Tempo       http://127.0.0.1:53200   (queried through Grafana Explore)
+#   OTLP in     http://127.0.0.1:54318   (set OTEL_EXPORTER_OTLP_ENDPOINT to this)
+#
+# On an incident branch checked out in a worktree, point the infra mounts at it:
+#   WARBAND_INFRA=<worktree>/infra docker compose -f training/ops/compose.observe.yaml up -d --force-recreate
+#
+# Stop with: docker compose -f training/ops/compose.observe.yaml down -v
+name: warband-observe
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+      - --web.enable-lifecycle
+    extra_hosts: ['host.docker.internal:host-gateway']
+    ports: ['127.0.0.1:59090:9090']
+    volumes:
+      - ./prometheus.local.yaml:/etc/prometheus/prometheus.yml:ro
+      - ${WARBAND_INFRA:-../../infra}/alerts.yaml:/etc/prometheus/alerts.yaml:ro
+      - ./slo-rules.yaml:/etc/prometheus/slo-rules.yaml:ro
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: training
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports: ['127.0.0.1:53300:3000']
+    volumes:
+      - ${WARBAND_INFRA:-../../infra}/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ${WARBAND_INFRA:-../../infra}/grafana/dashboards:/var/lib/grafana/dashboards:ro
+  tempo:
+    image: grafana/tempo:2.8.2
+    command: ['-config.file=/etc/tempo.yaml']
+    ports: ['127.0.0.1:53200:3200', '127.0.0.1:54318:4318']
+    volumes: ['${WARBAND_INFRA:-../../infra}/tempo.yaml:/etc/tempo.yaml:ro']
