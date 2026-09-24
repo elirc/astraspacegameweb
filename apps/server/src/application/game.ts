@@ -22,6 +22,7 @@ import {
   type Village,
 } from '../../../../packages/db';
 import { command, drain, fail, notify, report } from './engine';
+import { redis } from '../redis';
 const numberId = (v: unknown) => z.coerce.number().int().positive().parse(v);
 const obj = (req: any) => req.body as Record<string, any>;
 export async function spawn(tx: Tx, name: string, userId: number | null) {
@@ -60,7 +61,9 @@ export const gameUseCases = {
     support: process.env.SUPPORT_EMAIL || 'Contact your server administrator',
   }),
   get_api_health: async () => {
-    await database.query('SELECT 1');
+    // Deep health: an instance that cannot reach Redis can neither fan out live
+    // events nor share rate limits with its peers, so it should not take traffic.
+    await Promise.all([database.query('SELECT 1'), redis.ping()]);
     return { ok: true, server_now: Date.now() };
   },
   get_api_state: async (req: any) => {
