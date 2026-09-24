@@ -1,3 +1,5 @@
+-- NPC players are administrator-created accounts driven by the sidejobs NPC loop
+-- (apps/server/src/application/npcs.ts). One row per NPC; the player row owns villages.
 CREATE TABLE npc_players (
  player_id bigint PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
  enabled boolean NOT NULL DEFAULT true,
