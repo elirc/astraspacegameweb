@@ -2,7 +2,7 @@ groups:
   - name: warband
     rules:
       - alert: EventLagHigh
-        expr: histogram_quantile(0.99, sum(rate(warband_event_lag_seconds_bucket[2m])) by (le)) > 5 or max(warband_oldest_event_seconds) > 5
+        expr: histogram_quantile(0.99, sum(rate(warband_event_lag_seconds_bucket[2m])) by (le)) > 5
         for: 2m
         labels: { severity: critical }
         annotations: { summary: "World event lag exceeds five seconds", runbook: "docs/runbooks/stuck-event.md" }

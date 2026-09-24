@@ -16,7 +16,9 @@ collectDefaultMetrics({ register: registry, prefix: 'warband_' });
 export const eventLag = new Histogram({
   name: 'warband_event_lag_seconds',
   help: 'Delay between event due time and committed resolution',
-  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60],
+  // The lag SLO is 2 s (docs/verification.md). Spend the buckets where the SLO is
+  // decided instead of on 10/30/60 s buckets nobody reads.
+  buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 0.75, 1, 1.5, 2],
   registers: [registry],
 });
 type Resolution = { due: number; kind: string };
