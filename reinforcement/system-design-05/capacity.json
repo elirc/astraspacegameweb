@@ -1,0 +1,39 @@
+{
+  "project": "Warband / astraspacegameweb",
+  "assumption_status": "hypothetical teaching load, not measured",
+  "calculations": [
+    {
+      "label": "Illustrative snapshot read rate",
+      "kind": "readRps",
+      "args": {
+        "active": 1800,
+        "readsPerMinute": 2
+      },
+      "expected": 60,
+      "unit": "requests/s"
+    },
+    {
+      "label": "One-world notification payload fanout",
+      "kind": "fanout",
+      "args": {
+        "updatesPerSecond": 10,
+        "subscribers": 200,
+        "payloadBytes": 300
+      },
+      "expected": 600000,
+      "unit": "bytes/s"
+    },
+    {
+      "label": "Drain 600 overdue events with continuing arrivals",
+      "kind": "queueDrain",
+      "args": {
+        "backlog": 600,
+        "arrivalsPerSecond": 20,
+        "workers": 4,
+        "secondsPerJob": 0.1
+      },
+      "expected": 30,
+      "unit": "seconds"
+    }
+  ]
+}

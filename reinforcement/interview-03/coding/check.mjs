@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+const subject = await import(process.argv.includes('--reference') ? '../_interviewer/reference.mjs' : './exercise.mjs');
+const {applyWorldEvent:f}=subject;const s=()=>({worldId:'A',sequence:4,value:10});const e=(sequence,delta=2,worldId='A')=>({worldId,sequence,delta});
+test('exact next event advances state',()=>assert.deepEqual(f(s(),e(5)),{status:'applied',snapshot:{worldId:'A',sequence:5,value:12}}));
+test('duplicate sequence is ignored',()=>assert.equal(f(s(),e(4)).status,'ignored'));
+test('older event is ignored',()=>assert.equal(f(s(),e(3)).status,'ignored'));
+test('gap preserves snapshot identity',()=>{const old=s();const out=f(old,e(6));assert.equal(out.status,'gap');assert.equal(out.snapshot,old);});
+test('wrong scope takes precedence over sequence checks',()=>{const old=s();const out=f(old,e(4,9,'B'));assert.equal(out.status,'wrong-scope');assert.equal(out.snapshot,old);});
+test('zero and negative deltas follow the same transition policy',()=>{assert.equal(f(s(),e(5,0)).snapshot.value,10);assert.equal(f(s(),e(5,-2)).snapshot.value,8);});
+test('frozen snapshot stays unchanged',()=>{const old=Object.freeze(s());f(old,Object.freeze(e(5)));assert.equal(old.sequence,4);assert.equal(old.value,10);});

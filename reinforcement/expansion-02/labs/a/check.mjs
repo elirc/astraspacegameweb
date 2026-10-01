@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+const subject = await import(process.argv.includes('--reference') ? '../../_answers/a.mjs' : './exercise.mjs');
+const {planDue:p}=subject;const e=(id,worldId,dueAt)=>({id,worldId,dueAt});
+test('includes exact deadline and excludes future events',()=>assert.deepEqual(p([e('a','A',10),e('b','B',11)],10,4,4),['a']));
+test('equal times have deterministic ID ordering',()=>{const rows=[e('c','A',1),e('a','A',1),e('b','A',1)];assert.deepEqual(p(rows,2,2,3),['a','b']);assert.deepEqual(p([...rows].reverse(),2,2,3),['a','b']);});
+test('per-world ceiling can leave capacity unused',()=>assert.deepEqual(p([e('a','A',1),e('b','A',2),e('c','B',3)],4,3,1),['a','c']));
+test('global ceiling applies across worlds',()=>assert.deepEqual(p([e('c','C',3),e('a','A',1),e('b','B',2)],4,2,1),['a','b']));
+test('empty input and invalid policy have distinct results',()=>{assert.deepEqual(p([],0,1,1),[]);for(const args of [[NaN,1,1],[0,0,1],[0,1,0],[0,1.5,1]])assert.throws(()=>p([],...args),RangeError);});
+test('snapshot order is preserved and special world IDs are ordinary',()=>{const rows=Object.freeze([Object.freeze(e('b','__proto__',2)),Object.freeze(e('a','__proto__',1))]);assert.deepEqual(p(rows,3,2,1),['a']);assert.equal(rows[0].id,'b');});

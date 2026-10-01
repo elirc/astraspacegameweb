@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+const subject = await import(process.argv.includes('--reference') ? '../../_answers/b.mjs' : './exercise.mjs');
+const {freshness:f}=subject;const base=()=>({now:100,heartbeatAt:80,oldestDueAt:70,maxHeartbeatAgeMs:20,maxBacklogAgeMs:30});
+test('exact thresholds are healthy with both ages exposed',()=>assert.deepEqual(f(base()),{state:'healthy',heartbeatAgeMs:20,backlogAgeMs:30}));
+test('one millisecond beyond each budget selects the right state',()=>{assert.equal(f({...base(),heartbeatAt:79}).state,'stalled');assert.equal(f({...base(),oldestDueAt:69}).state,'backlogged');});
+test('missing heartbeat is unknown even with backlog',()=>assert.deepEqual(f({...base(),heartbeatAt:null,oldestDueAt:0}),{state:'unknown',heartbeatAgeMs:null,backlogAgeMs:100}));
+test('future heartbeat reports skew and stalled takes precedence over backlog',()=>{assert.equal(f({...base(),heartbeatAt:101}).state,'clock-skew');assert.equal(f({...base(),heartbeatAt:0,oldestDueAt:0}).state,'stalled');});
+test('zero instant is real and empty or future backlog is allowed',()=>{assert.equal(f({...base(),now:0,heartbeatAt:0,oldestDueAt:null}).state,'healthy');assert.equal(f({...base(),oldestDueAt:null}).backlogAgeMs,null);assert.equal(f({...base(),oldestDueAt:101}).backlogAgeMs,0);});
+test('invalid telemetry rejects without modifying input',()=>{const x=Object.freeze(base());f(x);assert.equal(x.now,100);for(const patch of [{now:NaN},{heartbeatAt:undefined},{oldestDueAt:'0'},{maxBacklogAgeMs:-1},{maxHeartbeatAgeMs:Infinity}])assert.throws(()=>f({...base(),...patch}),RangeError);});

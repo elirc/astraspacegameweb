@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+const subject = await import(process.argv.includes('--reference') ? '../_answers/reference.mjs' : './exercise.mjs');
+const {initialRefresh:i,stepRefresh:s}=subject;
+const hint=x=>s(x,{type:'hint'}),done=x=>s(x,{type:'settled'});
+test('initial state is explicit and first hint starts one read',()=>{assert.deepEqual(i(),{inFlight:false,dirty:false,disposed:false,starts:0});assert.equal(hint(i()).starts,1);});
+test('hint burst coalesces into one follow-up',()=>{let x=hint(i());for(let n=0;n<10;n++)x=hint(x);assert.equal(x.starts,1);x=done(x);assert.equal(x.starts,2);assert.equal(x.inFlight,true);assert.equal(x.dirty,false);x=done(x);assert.equal(x.inFlight,false);assert.equal(x.starts,2);});
+test('hint during follow-up creates another obligation',()=>{let x=done(hint(hint(i())));x=done(hint(x));assert.equal(x.starts,3);assert.equal(x.dirty,false);});
+test('settlement after failure also releases busy state',()=>{const x=s(hint(i()),{type:'settled',outcome:'failure'});assert.equal(x.inFlight,false);assert.equal(hint(x).starts,2);});
+test('dispose blocks hints and completions',()=>{const x=s(hint(hint(i())),{type:'dispose'});assert.equal(x.disposed,true);assert.equal(x.inFlight,false);assert.equal(x.dirty,false);assert.equal(hint(x),x);assert.equal(done(x),x);});
+test('unknown and idle completion are no-ops',()=>{const x=i();assert.equal(done(x),x);assert.equal(s(x,{type:'other'}),x);});
+test('state is not mutated',()=>{const x=Object.freeze(i());const y=hint(x);assert.equal(x.starts,0);assert.equal(y.starts,1);});
