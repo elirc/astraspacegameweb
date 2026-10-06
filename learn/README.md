@@ -14,6 +14,9 @@ is the junior on-ramp to that material.
 >   is marked **requires Docker, currently down**. Each of those steps has a no-Docker substitute in `training/ops/NO-DOCKER-ROUTE.md`.
 > - **`node_modules` was removed to free disk space.** Run `pnpm install --frozen-lockfile` before anything that uses `pnpm`/`npx tsx`/vitest
 >   (it took about 7 min in B03). Plain `node` scripts that you write yourself need no install.
+> - **Cross-repo curriculum links** (`../../opusorganize/apprenticeship/…`) resolve only when this repo sits directly on the Desktop next to
+>   `opusorganize`, as in the original workspace. They will show as broken on GitHub's web view or from a clone elsewhere; the linked pages are
+>   concept write-ups, and every exercise in this folder is self-contained without them.
 
 ## Prerequisites (do these first)
 
